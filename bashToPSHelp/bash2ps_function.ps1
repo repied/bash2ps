@@ -38,14 +38,19 @@ function bash2ps {
 
     if ($selected) {
         try {
-            $textToCopy = $selected.Trim("`r", "`n")
-            Set-Clipboard -Value $textToCopy
-            Write-Host $textToCopy -ForegroundColor Cyan
-            Write-Host "Copied to the clipboard. Paste it at the prompt with Ctrl+V." -ForegroundColor Green
+            $textToPaste = $selected.Trim("`r", "`n")
+            Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue | Out-Null
+            if ($null -ne [System.Windows.Forms.SendKeys]) {
+                [System.Windows.Forms.SendKeys]::SendWait($textToPaste)
+                Write-Host $textToPaste -ForegroundColor Cyan
+            }
+            else {
+                Write-Host $textToPaste -ForegroundColor Cyan
+            }
         }
         catch {
             Write-Host $selected -ForegroundColor Cyan
-            Write-Host "Clipboard access was unavailable, so the command was printed instead." -ForegroundColor Yellow
+            Write-Host "The command was printed instead because prompt paste was unavailable." -ForegroundColor Yellow
         }
     }
     else {
