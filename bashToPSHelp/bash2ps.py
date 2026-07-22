@@ -11,6 +11,11 @@ import subprocess
 import sys
 from typing import List
 
+try:
+    import requests
+except ImportError:  # pragma: no cover
+    requests = None
+
 
 COMMAND_MAPPINGS = {
     "ls": ["Get-ChildItem"],
@@ -195,6 +200,45 @@ def _normalize_command(input_text: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
+def _try_gemini_fallback(command: str) -> str | None:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key or requests is None:
+        return None
+
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": (
+                            "Translate this Bash command to a PowerShell equivalent. "
+                            "Return only one concise PowerShell command and, if needed, a short note prefixed by 'NOTE:'. "
+                            f"Command: {command}"
+                        )
+                    }
+                ]
+            }
+        ]
+    }
+
+    try:
+        response = requests.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+            params={"key": api_key},
+            json=payload,
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json()
+        text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        if text:
+            return text.strip()
+    except Exception:
+        return None
+
+    return None
+
+
 def translate_command(command: str) -> List[str]:
     normalized = _normalize_command(command)
     if not normalized:
@@ -230,7 +274,13 @@ def translate_command(command: str) -> List[str]:
             else:
                 suggestions.append(translated[0])
     else:
-        suggestions.append(f"# No deterministic mapping for '{base}'")
+        fallback = _try_gemini_fallback(normalized)
+        if fallback:
+            suggestions.append(fallback)
+            suggestions.append(f"# Best effort translation from Gemini for '{base}'")
+        else:
+            suggestions.append(f"# No deterministic mapping for '{base}'")
+            suggestions.append(f"# Best effort translation unavailable")
 
     if base in {"ls", "ll", "la"}:
         suggestions.append("Get-ChildItem -Force")
@@ -252,16 +302,18 @@ def _choose_with_fzf(suggestions: List[str]) -> str | None:
 
     try:
         process = subprocess.run(
-            ["fzf"],
+            ["fzf", "--height", "10", "--reverse", "--border"],
             input="\n".join(suggestions).encode("utf-8"),
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             check=False,
         )
     except FileNotFoundError:
         return suggestions[0]
 
     if process.returncode not in {0, 1}:
+        if process.stderr:
+            print(process.stderr.decode("utf-8").strip(), file=sys.stderr)
         return None
 
     if process.returncode == 0:
@@ -300,6 +352,11 @@ def run_cli(argv: List[str] | None = None) -> int:
     if not suggestions:
         print("No translation available")
         return 0
+
+    if len(suggestions) > 1:
+        print("Suggestions:")
+        for item in suggestions:
+            print(f"- {item}")
 
     selected = _choose_with_fzf(suggestions)
     if selected is None:
