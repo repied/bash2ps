@@ -41,8 +41,10 @@ function bash2ps {
         # Write-Host "PS> $selected" -ForegroundColor Cyan
         try {
             if (Get-Command -Name 'Set-PSReadLineOption' -ErrorAction SilentlyContinue) {
-                [Microsoft.PowerShell.PSConsoleReadLine]::DeleteLine()
-                [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selected)
+                $bufferState = [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState()
+                $currentLineLength = if ($null -ne $bufferState.CurrentLine) { $bufferState.CurrentLine.Length } else { 0 }
+                $textToInsert = $selected.Trim("`r", "`n")
+                [Microsoft.PowerShell.PSConsoleReadLine]::Replace(0, $currentLineLength, $textToInsert, $null, $null)
             }
             else {
                 Write-Host $selected -ForegroundColor Cyan
