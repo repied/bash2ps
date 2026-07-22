@@ -323,15 +323,11 @@ def _choose_with_fzf(suggestions: List[str]) -> str | None:
     return None
 
 
-def _paste_to_clipboard(command: str) -> None:
-    if os.name == "nt":
-        subprocess.run(["clip"], input=command.encode("utf-8"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-        return
-
-    if shutil := os.environ.get("WAYLAND_DISPLAY"):
-        subprocess.run(["wl-copy"], input=command.encode("utf-8"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-    else:
-        subprocess.run(["xclip", "-selection", "clipboard"], input=command.encode("utf-8"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+def _emit_to_prompt(command: str) -> None:
+    print("\n--- bash2ps suggestion ---")
+    print(command)
+    print("-------------------------")
+    sys.stdout.flush()
 
 
 def run_cli(argv: List[str] | None = None) -> int:
@@ -362,9 +358,8 @@ def run_cli(argv: List[str] | None = None) -> int:
     if selected is None:
         selected = suggestions[0]
 
-    _paste_to_clipboard(selected)
-    print(selected)
-    print("Copied to clipboard. Paste it into your PowerShell prompt.")
+    _emit_to_prompt(selected)
+    print("Printed for your PowerShell prompt. Press Ctrl+C to cancel before running it.")
     return 0
 
 
